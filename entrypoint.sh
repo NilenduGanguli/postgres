@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# 1. Check if PGDATA is uninitialized (i.e., the volume is empty)
+# 1. Check if PGDATA is uninitialized
 if [ -z "$(ls -A "$PGDATA")" ]; then
     echo "Initializing database cluster in $PGDATA..."
 
@@ -17,14 +17,15 @@ if [ -z "$(ls -A "$PGDATA")" ]; then
     /usr/bin/postgres -D "$PGDATA" &
     pid="$!"
 
-    # Wait for Postgres to be ready
-    until pg_isready -h localhost -p 5432 -U postgres; do
+    ### CHANGED: Replaced 'pg_isready' with a 'psql' loop ###
+    # Wait for Postgres to be ready by attempting a simple query
+    until psql -c "SELECT 1" --username postgres &> /dev/null; do
         echo "Waiting for postgres..."
         sleep 1
     done
+    ### END OF CHANGE ###
 
     # 2. Use psql to create the user and database
-    # This runs as the 'postgres' superuser
     echo "Creating user '$POSTGRES_USER' and database '$POSTGRES_DB'..."
     psql -v ON_ERROR_STOP=1 --username postgres <<-EOSQL
         CREATE USER $POSTGRES_USER WITH ENCRYPTED PASSWORD '$POSTGRES_PASSWORD';
@@ -38,7 +39,6 @@ EOSQL
     wait "$pid"
 
     # 4. Set up secure network access
-    # We use 'scram-sha-256' for password authentication
     echo "listen_addresses = '*'" >> $PGDATA/postgresql.conf
     echo "host all all 0.0.0.0/0 scram-sha-256" >> $PGDATA/pg_hba.conf
     echo "host all all ::/0 scram-sha-256" >> $PGDATA/pg_hba.conf
